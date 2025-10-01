@@ -66,7 +66,30 @@
         window.onload = function() {
             loadProducts();
             updateCartCount();
+            
+            // Iniciar actualización automática
+            startAutoRefresh();
         };
+
+        // Actualización automática cada 3 segundos
+        function startAutoRefresh() {
+            setInterval(async () => {
+                const productsSection = document.getElementById('productsSection');
+                const cartSection = document.getElementById('cartSection');
+                
+                // Solo actualizar si estamos viendo productos
+                if (!productsSection.classList.contains('hidden')) {
+                    await loadProducts();
+                    await updateCartCount();
+                }
+                
+                // Si estamos en el carrito, actualizar también
+                if (!cartSection.classList.contains('hidden')) {
+                    await loadCart();
+                    await updateCartCount();
+                }
+            }, 3000); // 3000 ms = 3 segundos
+        }
 
         // Cargar productos desde la API
         async function loadProducts() {

@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TechShop - Tienda de Tecnología</title>
+    <link rel="stylesheet" href="css/estilo.css">
+</head>
+<body>
+    <header>
+        <div class="container">
+            <div class="header-content">
+                <div class="logo">
+                    <h1>🛒 TechShop</h1>
+                </div>
+                <div class="cart-info">
+                    <span>Carrito: </span>
+                    <span class="cart-count" id="cartCount">0</span>
+                    <button class="btn-primary" onclick="toggleCart()">Ver Carrito</button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <main>
+        <div class="container">
+            <!-- Sección de Productos -->
+            <section class="section" id="productsSection">
+                <h2>🖥️ Productos Disponibles</h2>
+                <div class="loading" id="productsLoading">Cargando productos...</div>
+                <div class="products-grid" id="productsGrid"></div>
+            </section>
+
+            <!-- Sección del Carrito -->
+            <section class="section hidden" id="cartSection">
+                <h2>🛒 Tu Carrito de Compras</h2>
+                <div class="cart-section">
+                    <div id="cartItems"></div>
+                    <div class="cart-total" id="cartTotal"></div>
+                    
+                    <div class="order-form" id="orderForm">
+                        <h3>Información de Compra</h3>
+                        <div class="form-group">
+                            <label for="customerName">Nombre Completo:</label>
+                            <input type="text" id="customerName" placeholder="Tu nombre completo">
+                        </div>
+                        <div class="form-group">
+                            <label for="customerEmail">Email:</label>
+                            <input type="email" id="customerEmail" placeholder="tu@email.com">
+                        </div>
+                        <button class="btn-success" onclick="processOrder()">💳 Procesar Orden</button>
+                        <button class="btn-primary" onclick="toggleCart()">← Seguir Comprando</button>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </main>
+
+    <div id="alertContainer"></div>
+
+    <script>
+        let products = [];
+        let cart = [];
+
+        // Cargar productos al iniciar
+        window.onload = function() {
+            loadProducts();
+            updateCartCount();
+        };
+
+        // Cargar productos desde la API
+        async function loadProducts() {
+            try {
+                const response = await fetch('/api/products');
+                const data = await response.json();
+                
+                if (data.success) {
+                    products = data.products;
+                    displayProducts();
+                } else {
+                    showAlert('Error al cargar productos', 'error');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                showAlert('Error de conexión', 'error');
+            }
+        }
+
+        // Mostrar productos en la interfaz
+        function displayProducts() {
+            const grid = document.getElementById('productsGrid');
+            const loading = document.getElementById('productsLoading');
+            
+            loading.classList.add('hidden');
+            
+            grid.innerHTML = products.map(product => `
+                <div class="product-card">
+                    <div class="product-image">📱</div>
+                    <div class="product-info">
+                        <h3>${product.name}</h3>
+                        <div class="product-price">$${product.price.toLocaleString()}</div>
+                        <div class="product-stock">Stock: ${product.stock} unidades</div>
+                        <div class="add-to-cart">
+                            <input type="number" class="quantity-input" id="qty-${product.id}" value="1" min="1" max="${product.stock}">
+                            <button class="btn-success" onclick="addToCart(${product.id})" ${product.stock === 0 ? 'disabled' : ''}>
+                                ${product.stock === 0 ? 'Sin Stock' : 'Agregar'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // Agregar producto al carrito
+        async function addToCart(productId) {
+            const quantityInput = document.getElementById(`qty-${productId}`);
+            const quantity = parseInt(quantityInput.value);
+
+            if (quantity <= 0) {
+                showAlert('Cantidad inválida', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/cart/add', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        productId: productId,
+                        quantity: quantity
+                    })
+                });
+
+                const data = await response.json();
+                
+                if (data.success) {
+                    showAlert(data.message, 'success');
+                    updateCartCount();
+                    quantityInput.value = 1;
+                } else {
+                    showAlert(data.message, 'error');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                showAlert('Error al agregar producto', 'error');
+            }
+        }
+
+        // Actualizar contador del carrito
+        async function updateCartCount() {
+            try {
+                const response = await fetch('/api/cart');
+                const data = await response.json();
+                
+                if (data.success) {
+                    const count = data.cart.reduce((total, item) => total + item.quantity, 0);
+                    document.getElementById('cartCount').textContent = count;
+                }
+            } catch (error) {
+                console.error('Error al obtener carrito:', error);
+            }
+        }
+
+        // Mostrar/ocultar carrito
+        async function toggleCart() {
+            const productsSection = document.getElementById('productsSection');
+            const cartSection = document.getElementById('cartSection');
+            
+            if (cartSection.classList.contains('hidden')) {
+                // Mostrar carrito
+                productsSection.classList.add('hidden');
+                cartSection.classList.remove('hidden');
+                await loadCart();
+            } else {
+                // Mostrar productos
+                cartSection.classList.add('hidden');
+                productsSection.classList.remove('hidden');
+            }
+        }
+
+        // Cargar y mostrar carrito
+        async function loadCart() {
+            try {
+                const response = await fetch('/api/cart');
+                const data = await response.json();
+                
+                if (data.success) {
+                    displayCart(data.cart, data.grandTotal);
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                showAlert('Error al cargar carrito', 'error');
+            }
+        }
+
+        // Mostrar carrito en la interfaz
+        function displayCart(cartItems, total) {
+            const cartItemsContainer = document.getElementById('cartItems');
+            const cartTotalContainer = document.getElementById('cartTotal');
+            
+            if (cartItems.length === 0) {
+                cartItemsContainer.innerHTML = '<div style="text-align: center; padding: 2rem; color: #7f8c8d;">Tu carrito está vacío</div>';
+                cartTotalContainer.innerHTML = '';
+                return;
+            }
+            
+            cartItemsContainer.innerHTML = cartItems.map(item => `
+                <div class="cart-item">
+                    <div>
+                        <strong>${item.name}</strong><br>
+                        <small>$${item.price.toLocaleString()} x ${item.quantity}</small>
+                    </div>
+                    <div>
+                        <span style="font-weight: bold;">$${item.total.toLocaleString()}</span>
+                        <button class="btn-danger" onclick="removeFromCart(${item.productId})" style="margin-left: 10px;">Eliminar</button>
+                    </div>
+                </div>
+            `).join('');
+            
+            cartTotalContainer.innerHTML = `Total: $${total.toLocaleString()}`;
+        }
+
+        // Eliminar producto del carrito
+        async function removeFromCart(productId) {
+            try {
+                const response = await fetch(`/api/cart/${productId}`, {
+                    method: 'DELETE'
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    showAlert(data.message, 'success');
+                    await loadCart();
+                    updateCartCount();
+                } else {
+                    showAlert(data.message, 'error');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                showAlert('Error al eliminar producto', 'error');
+            }
+        }
+
+        // Procesar orden
+        async function processOrder() {
+            const customerName = document.getElementById('customerName').value.trim();
+            const customerEmail = document.getElementById('customerEmail').value.trim();
+            
+            if (!customerName || !customerEmail) {
+                showAlert('Por favor completa todos los campos', 'error');
+                return;
+            }
+            
+            if (!isValidEmail(customerEmail)) {
+                showAlert('Por favor ingresa un email válido', 'error');
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/order', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        customerName: customerName,
+                        customerEmail: customerEmail
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    showAlert(`¡Orden #${data.orderId} procesada exitosamente!`, 'success');
+                    document.getElementById('customerName').value = '';
+                    document.getElementById('customerEmail').value = '';
+                    await loadCart();
+                    updateCartCount();
+                    loadProducts(); // Recargar productos para actualizar stock
+                } else {
+                    showAlert(data.message, 'error');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                showAlert('Error al procesar la orden', 'error');
+            }
+        }
+
+        // Validar email
+        function isValidEmail(email) {
+            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            return emailRegex.test(email);
+        }
+
+        // Mostrar alertas
+        function showAlert(message, type) {
+            const alertContainer = document.getElementById('alertContainer');
+            const alertDiv = document.createElement('div');
+            alertDiv.className = `alert alert-${type}`;
+            alertDiv.textContent = message;
+            alertDiv.style.position = 'fixed';
+            alertDiv.style.top = '20px';
+            alertDiv.style.right = '20px';
+            alertDiv.style.zIndex = '1000';
+            alertDiv.style.maxWidth = '400px';
+            
+            alertContainer.appendChild(alertDiv);
+            
+            setTimeout(() => {
+                alertDiv.remove();
+            }, 4000);
+        }
+    </script>
+</body>
+</html>
